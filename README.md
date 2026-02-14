@@ -9,5 +9,7 @@ Phase 1 – Analysis and Planning
 ## Repository Structure
 - docs/ – Documentation
 - diagrams/ – System diagrams
-- planning/ – Project planning artifacts
 - research/ – Background research
+
+## activity diagram - SOS Trigger & Escalation
+[SOS Trigger and Escalation Actitvity Diagram](diagrams/activity-diagrams/sos-trigger-escalation-activity-diagram.drawio.png)
