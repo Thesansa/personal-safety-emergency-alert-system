@@ -11,5 +11,7 @@ Phase 1 – Analysis and Planning
 - diagrams/ – System diagrams
 - research/ – Background research
 
-## activity diagram - SOS Trigger & Escalation
+## Activity diagrams
 [SOS Trigger and Escalation Actitvity Diagram](diagrams/activity-diagrams/sos-trigger-escalation-activity-diagram.drawio.png)
+[Alert resolution by trusted contact and resolution confirmation by user](diagrams/activity-diagrams/trusted-contact-resolution-alert-and-user-confirmation.drawio.png)
+
