@@ -167,5 +167,6 @@ Primary Actor: User Secondary Actor: System
 Entry Conditions: An SOS alert is currently active A resolution request has been initiated (e.g., by a trusted contact or system prompt) The user is authenticated and able to interact with the system (This ensures the user is conscious and intentionally confirming safety.)
 
 Description: Allows the user to confirm that they are safe after a resolution request, finalizing the termination of the SOS alert.
+In cases where the user is unconscious, an OTP-based secondary authorization mechanism may be introduced to allow trusted contacts or family members to confirm alert resolution securely.(future enhancment)
 
 Exit Conditions: SOS alert status is updated to resolved Real-time location tracking is stopped Escalation timers are terminated Trusted contacts are notified that the alert has been resolved
