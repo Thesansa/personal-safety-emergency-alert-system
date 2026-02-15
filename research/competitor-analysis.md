@@ -1,7 +1,7 @@
 # Competitor Analysis
 
 Detailed competitor comparison is available here:
-[View Competitor Analysis (Google Sheets)]([your-link](https://docs.google.com/spreadsheets/d/1hARTAW6kSANtNa0N0mBSjSPN-RUzmNvy7G7VHSNm1z0/edit?usp=sharing)
+[View Competitor Analysis (Google Sheets)](https://docs.google.com/spreadsheets/d/1hARTAW6kSANtNa0N0mBSjSPN-RUzmNvy7G7VHSNm1z0/edit?usp=sharing)
 
 ## Comparative Insights
 
