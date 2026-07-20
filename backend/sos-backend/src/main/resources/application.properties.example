@@ -1,8 +1,8 @@
 spring.application.name=sos-backend
 
-spring.datasource.url=jdbc:postgresql://localhost:5432/nova_sos_db
-spring.datasource.username=postgres
-spring.datasource.password=CHANGE_ME
+spring.datasource.url=${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/nova_sos_db}
+spring.datasource.username=${SPRING_DATASOURCE_USERNAME:postgres}
+spring.datasource.password=${SPRING_DATASOURCE_PASSWORD:CHANGE_ME}
 spring.datasource.driver-class-name=org.postgresql.Driver
 
 spring.jpa.hibernate.ddl-auto=update
@@ -10,8 +10,8 @@ spring.jpa.show-sql=true
 spring.jpa.properties.hibernate.format_sql=true
 spring.jpa.properties.hibernate.dialect=org.hibernate.dialect.PostgreSQLDialect
 
-jwt.secret=CHANGE_ME_GENERATE_YOUR_OWN_SECRET
+jwt.secret=${JWT_SECRET:CHANGE_ME_GENERATE_YOUR_OWN_SECRET}
 jwt.access-token-expiration-ms=1800000
-jwt.refresh-token-expiration-ms=2592000000
+jwt.refresh-token-expiration-ms=${JWT_REFRESH_EXPIRATION_MS:2592000000}
 
 server.port=8080
