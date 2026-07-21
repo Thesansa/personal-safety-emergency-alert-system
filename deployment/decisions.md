@@ -1,6 +1,8 @@
-# Deployment & Security Decisions
+# Architecture, Security & Deployment Decisions
 
-This document records important architectural decisions made during the development of the SOS MVP.
+This document records the key architectural, security, and deployment decisions made during the development of the Personal Safety Emergency Alert System MVP.
+
+Each decision explains the reasoning behind the selected approach, its benefits, known MVP trade-offs, and possible future improvements.
 
 ---
 
@@ -12,9 +14,9 @@ Trusted contacts will access active alerts using secure one-time magic links ins
 
 ## Reason
 
-During emergencies, trusted contacts should access the alert immediately without registration or login.
+During emergencies, trusted contacts should be able to access an active alert immediately without registration or authentication.
 
-Reducing friction is more important than requiring authentication.
+Reducing friction during a safety-critical situation is prioritised over requiring authenticated access.
 
 ## Security Measures
 
@@ -24,45 +26,72 @@ Reducing friction is more important than requiring authentication.
 - Token becomes invalid once the alert is resolved
 - Optional access logging
 
-## Known MVP Limitation
+## Known MVP Trade-off
 
-A trusted contact could forward the link to another person.
+A trusted contact could forward the magic link to another person.
 
-This trade-off is accepted for the MVP to prioritize rapid emergency access.
+This risk is considered acceptable for the MVP to prioritise rapid emergency access.
 
 Future versions may introduce authenticated trusted contact accounts.
 
 ---
 
-# Decision 2 — JWT Authentication
+# Decision 2 — JWT Authentication with Refresh Tokens
 
 ## Decision
 
-Users authenticate using JWT access tokens with refresh tokens.
+The backend uses short-lived JWT Access Tokens together with Refresh Tokens.
 
 ## Reason
 
-JWT provides stateless authentication while refresh tokens allow long-lived user sessions without requiring repeated logins.
+Using only JWT access tokens would require users to log in again every time the access token expires.
+
+Refresh tokens provide a better user experience while maintaining security through short-lived access tokens.
 
 ## Implementation
 
-- Short-lived access token
-- Long-lived refresh token
-- Refresh token stored as a hash
-- Refresh token revocation on logout
+- Short-lived JWT Access Token
+- Long-lived Refresh Token
+- Refresh Tokens stored as hashes in the database
+- Refresh Token rotation on every refresh request
+- Refresh Token revocation during logout
+- Automatic access token renewal through a React Axios interceptor
 
 ## Benefits
 
-- Better security
-- Reduced server state
 - Improved user experience
-- Supports scalable deployments
+- Better security than long-lived JWTs
+- Session revocation support
+- Supports multiple active sessions
+- Stateless API authentication
 
-# Decision 3 – Database Schema Management
+## Trade-offs
+
+- Additional authentication logic
+- Refresh token storage and rotation
+- Slightly increased implementation complexity
+
+## Known Security Considerations
+
+The `/api/auth/refresh` endpoint authenticates solely through possession of a valid refresh token.
+
+Its security relies on:
+
+- HTTPS in non-local environments
+- Refresh Tokens stored in HttpOnly cookies (planned frontend implementation)
+- Token rotation
+- Token revocation on logout
+- Refresh Tokens stored as hashes instead of plain text
+
+Device binding and IP validation are not implemented in the MVP.
+
+---
+
+# Decision 3 — Database Schema Management
 
 ## Decision
 
-The project will use Hibernate's automatic schema generation during MVP development by configuring:
+Hibernate automatic schema generation is used during MVP development.
 
 ```properties
 spring.jpa.hibernate.ddl-auto=update
@@ -70,62 +99,56 @@ spring.jpa.hibernate.ddl-auto=update
 
 ## Reason
 
-Automatic schema generation allows the database schema to be created and updated directly from the application's entity classes. This enables rapid development without manually writing SQL migration scripts.
+The database schema is expected to change frequently during early development.
 
-Since the project is an MVP and the database design is expected to change frequently, this approach allows faster iteration while learning Spring Boot.
+Automatically synchronising entity classes with the database significantly accelerates development.
 
 ## Benefits
 
-- Faster development and prototyping
-- No manual SQL migrations during early development
-- Database schema stays synchronized with JPA entity classes
-- Simplifies learning and experimentation
+- Faster prototyping
+- Simplified development
+- Reduced manual SQL maintenance
+- Database schema stays synchronised with JPA entities
 
 ## Known MVP Trade-off
 
-Hibernate schema generation is not recommended for production environments because schema changes are not version-controlled or reviewable.
+Hibernate schema generation is not appropriate for production environments because schema changes are not version-controlled.
 
-Future versions of the project should migrate to **Flyway** (or Liquibase), where database changes are managed through version-controlled SQL migration scripts.
+Future versions should migrate to Flyway (or Liquibase) migrations.
 
 ---
 
-# Decision 4 – Secrets Management
+# Decision 4 — Secrets Management
 
 ## Decision
 
-Sensitive application configuration will not be committed to the Git repository.
+Sensitive configuration values are excluded from version control.
 
-This includes:
+## Protected Secrets
 
-- JWT signing secret
-- Database password
-- Email credentials
-- API keys
-- Other sensitive configuration values
-
-## Reason
-
-Secrets committed to Git remain in the repository history even if they are deleted later, creating a permanent security risk.
-
-Separating configuration from source code follows secure development practices and makes deployment to different environments much easier.
+- JWT Secret
+- Database Password
+- Email Credentials
+- API Keys
+- Other sensitive configuration
 
 ## Implementation
 
-During development:
+Development secrets are stored locally using configuration files or environment variables.
 
-- Sensitive values will be stored in a local configuration file (such as `application-local.properties`) or provided through environment variables.
-- Local configuration files containing secrets will be ignored using `.gitignore`.
-- Only placeholder or example configuration files will be committed to the repository.
+Sensitive files are excluded using `.gitignore`.
+
+Only example configuration files are committed.
 
 ## Benefits
 
-- Prevents accidental exposure of credentials
-- Supports different configurations for development and production
-- Aligns with secure DevOps practices
+- Prevents accidental credential exposure
+- Supports multiple deployment environments
+- Follows secure DevOps practices
 
 ---
 
-# Decision 5 – Rate Limiting
+# Decision 5 — Rate Limiting
 
 ## Decision
 
@@ -133,28 +156,145 @@ Rate limiting will not be implemented during the MVP.
 
 ## Reason
 
-The current focus is to complete the authentication flow and core emergency alert functionality before introducing infrastructure-level security controls.
+The current priority is completing the authentication workflow and emergency alert functionality.
 
-Implementing rate limiting correctly typically requires additional technologies such as:
+Proper rate limiting requires additional infrastructure such as:
 
 - Bucket4j
 - Redis
 - API Gateway
-- Reverse proxy configuration
+- Reverse Proxy configuration
 
-These technologies introduce additional complexity that is outside the scope of the MVP.
+These are intentionally deferred until after the MVP.
 
 ## Known MVP Trade-off
 
-Without rate limiting, authentication endpoints remain vulnerable to brute-force login attempts.
-
-This limitation is accepted for the MVP to prioritize delivering the complete emergency alert workflow.
+Authentication endpoints remain vulnerable to brute-force login attempts.
 
 ## Future Enhancement
 
-Future versions of the system may implement:
+Possible implementations include:
 
 - IP-based request limiting
 - User-based login throttling
-- Temporary account lockout after repeated failed login attempts
-- Distributed rate limiting using Redis or an API Gateway
+- Temporary account lockout
+- Distributed rate limiting using Redis
+
+---
+
+# Decision 6 — Dockerised Local Development
+
+## Decision
+
+The backend and PostgreSQL database are containerised using Docker Compose.
+
+## Reason
+
+Running application services inside containers provides a consistent development environment independent of the host operating system.
+
+Docker Compose also simplifies service orchestration by starting all required services together.
+
+## Implementation
+
+Docker Compose is responsible for:
+
+- Building the Spring Boot backend image
+- Pulling the PostgreSQL image
+- Creating an isolated Docker network
+- Creating persistent database volumes
+- Performing PostgreSQL health checks
+- Starting the backend after PostgreSQL becomes healthy
+- Allowing service-to-service communication using Docker DNS
+
+The backend communicates with PostgreSQL using the service name:
+
+```
+postgres
+```
+
+instead of
+
+```
+localhost
+```
+
+## Benefits
+
+- Consistent development environments
+- Simplified project setup
+- Environment isolation
+- Persistent database storage
+- Production-like networking
+- Easy onboarding for contributors
+
+## Known MVP Trade-off
+
+The current Docker Compose configuration is intended for local development only.
+
+Future production deployments will require:
+
+- Environment-specific Compose files
+- Secrets management
+- Reverse proxy
+- HTTPS
+- Container orchestration
+
+---
+
+# Decision 7 — Layered Backend Architecture
+
+## Decision
+
+The backend follows Spring Boot's layered architecture.
+
+```
+Controller
+      ↓
+Service
+      ↓
+Repository
+      ↓
+PostgreSQL
+```
+
+## Reason
+
+Separating responsibilities improves maintainability, readability, and testing.
+
+Each layer has a single responsibility.
+
+## Layer Responsibilities
+
+### Controller
+
+- REST API endpoints
+- Request validation
+- HTTP responses
+
+### Service
+
+- Business logic
+- Authentication
+- Alert lifecycle
+- Notification coordination
+
+### Repository
+
+- Database access
+- CRUD operations
+- Custom queries
+
+### Database
+
+- Persistent application data
+- Relationships
+- Alert history
+- User information
+
+## Benefits
+
+- Separation of concerns
+- Easier testing
+- Better maintainability
+- Improved scalability
+- Easier future refactoring
