@@ -74,6 +74,9 @@ Phase 2 – Implementation
    ./mvnw spring-boot:run
 ```
 
+## Github Actions
+- ✅ GitHub Actions CI pipeline (build + Docker build on every backend push)
+
 ## Documentation
 - [API Reference](docs/api.md)
 - [Design Decisions](deployment/decisions.md)
