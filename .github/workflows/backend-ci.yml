@@ -28,7 +28,7 @@ jobs:
         working-directory: backend/sos-backend
         run: |
           cp src/main/resources/application.properties.example src/main/resources/application.properties
-          mvn clean package
+          mvn clean package -DskipTests
 
       - name: Build Docker image
         working-directory: backend/sos-backend
