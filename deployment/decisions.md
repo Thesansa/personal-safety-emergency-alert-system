@@ -298,3 +298,45 @@ Each layer has a single responsibility.
 - Better maintainability
 - Improved scalability
 - Easier future refactoring
+
+# Decision 8 — Azure Cloud Deployment
+
+## Decision
+
+The backend is deployed to Microsoft Azure using Azure App Service and Azure PostgreSQL Flexible Server.
+
+## Reason
+
+The project forms part of the IEEE Young Protégé DevOps mentorship programme, where Azure is the primary cloud platform used throughout the learning journey.
+
+Deploying to Azure provides practical experience with cloud infrastructure, managed database services, container hosting, and cloud configuration.
+
+## Deployment Stack
+
+- Azure App Service (Linux)
+- Azure PostgreSQL Flexible Server
+- GitHub Container Registry (GHCR)
+
+## Benefits
+
+- Managed cloud infrastructure
+- Fully hosted PostgreSQL database
+- Container-based deployment
+- Easy scalability
+- Cloud-native environment
+
+## Trade-offs
+
+Deployment is currently manual.
+
+Each deployment requires:
+
+- Docker image build
+- Docker image push
+- Azure App Service update
+
+## Future Enhancement
+
+Deployment will be automated using GitHub Actions to achieve continuous deployment after each successful merge to the `main` branch.
+
+
