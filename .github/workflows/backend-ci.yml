@@ -3,33 +3,25 @@ name: Backend CI
 on:
   push:
     branches: [ main ]
-    paths:
-      - 'backend/sos-backend/**'
   pull_request:
     branches: [ main ]
-    paths:
-      - 'backend/sos-backend/**'
 
 jobs:
   build:
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-
       - name: Set up JDK 21
         uses: actions/setup-java@v4
         with:
           java-version: '21'
           distribution: 'temurin'
-
       - name: Build with Maven
         working-directory: backend/sos-backend
         run: |
           cp src/main/resources/application.properties.example src/main/resources/application.properties
           mvn clean package -DskipTests
-
       - name: Build Docker image
         working-directory: backend/sos-backend
         run: docker build -t nova-sos-backend .
