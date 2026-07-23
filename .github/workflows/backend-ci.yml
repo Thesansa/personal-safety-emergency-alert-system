@@ -12,16 +12,30 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+
+      - name: Check for backend changes
+        uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            backend:
+              - 'backend/sos-backend/**'
+
       - name: Set up JDK 21
+        if: steps.filter.outputs.backend == 'true'
         uses: actions/setup-java@v4
         with:
           java-version: '21'
           distribution: 'temurin'
+
       - name: Build with Maven
+        if: steps.filter.outputs.backend == 'true'
         working-directory: backend/sos-backend
         run: |
           cp src/main/resources/application.properties.example src/main/resources/application.properties
           mvn clean package -DskipTests
+
       - name: Build Docker image
+        if: steps.filter.outputs.backend == 'true'
         working-directory: backend/sos-backend
         run: docker build -t nova-sos-backend .
