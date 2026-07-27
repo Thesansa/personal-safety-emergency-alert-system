@@ -184,3 +184,18 @@ Authorization: Bearer <ACCESS_TOKEN>
 | **401 Unauthorized** | Invalid credentials or expired/revoked token |
 | **409 Conflict** | User already exists |
 | **500 Internal Server Error** | Unexpected server error |
+
+## Deployed Environment (Azure)
+
+Base URL:
+```text
+https://sos-semali-backend.azurewebsites.net/api/auth
+```
+
+All endpoints above work identically against this base URL.
+
+**Before testing:** the PostgreSQL database is stopped between work sessions to conserve
+Azure student credit. Please give a heads-up before testing so the database can be started
+(takes 1–2 minutes to come online). The App Service itself (free F1 tier) is always available,
+but may take a few extra seconds to respond on the very first request after a period of
+inactivity (cold start).
