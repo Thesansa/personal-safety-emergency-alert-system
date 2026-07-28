@@ -29,11 +29,10 @@ jobs:
           distribution: 'temurin'
 
       - name: Build with Maven
-        if: steps.filter.outputs.backend == 'true'
         working-directory: backend/sos-backend
         run: |
           cp src/main/resources/application.properties.example src/main/resources/application.properties
-          mvn clean package -DskipTests
+          mvn clean package
 
       - name: Build Docker image
         if: steps.filter.outputs.backend == 'true'
