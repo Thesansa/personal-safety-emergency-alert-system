@@ -76,6 +76,7 @@ Phase 2 – Implementation
 
 ## Github Actions
 - ✅ GitHub Actions CI pipeline (build + Docker build on every backend push)
+- temporarily disabled per mentor guidance while repo structure is still evolving; will re-enable once the module structure stabilizes
 
 ## Documentation
 - [API Reference](docs/api.md)
