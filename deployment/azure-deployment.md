@@ -2,21 +2,21 @@
 
 ## Overview
 
-The Personal Safety Emergency Alert System backend is deployed on Microsoft Azure.
+The Personal Safety Emergency Alert System is currently deployed on Microsoft Azure.
 
-The deployment currently consists of:
+The deployment consists of:
 
 - Azure App Service (Linux)
 - Azure PostgreSQL Flexible Server
 - GitHub Container Registry (GHCR)
 
-The frontend has not yet been deployed and will be added after its implementation is completed.
+The backend is fully deployed, while the frontend has been containerized and verified locally but has not yet been deployed to Azure.
 
 ---
 
 # Deployment Architecture
 
-```
+```text
 Internet
         │
         ▼
@@ -24,12 +24,19 @@ Azure App Service (Linux)
         │
         ▼
 Docker Container
+        ├───────────────┐
+        ▼               │
+Spring Boot Backend     │
+        │               │
+        ▼               │
+Azure PostgreSQL        │
+Flexible Server         │
+
+Frontend (Docker + Nginx)
         │
         ▼
-Spring Boot Backend
-        │
-        ▼
-Azure PostgreSQL Flexible Server
+Currently deployed locally via Docker Compose
+(Planned Azure deployment)
 ```
 
 ---
@@ -42,6 +49,13 @@ Azure PostgreSQL Flexible Server
 - Docker container
 - Hosted on Azure App Service (Linux)
 
+## Frontend
+
+- React + Vite
+- Dockerized with Nginx
+- Verified locally using Docker Compose
+- Azure deployment planned
+
 ## Database
 
 - Azure PostgreSQL Flexible Server
@@ -52,33 +66,33 @@ Azure PostgreSQL Flexible Server
 
 - GitHub Container Registry (GHCR)
 
-Docker images are pushed to GHCR and pulled by Azure App Service during deployment.
+Backend Docker images are pushed to GHCR and pulled by Azure App Service during deployment.
 
 ---
 
 # Environment Configuration
 
-Application secrets are not stored inside the Docker image.
-
-Sensitive configuration values such as:
+The backend uses Azure App Service Application Settings to inject sensitive configuration at runtime, including:
 
 - Database credentials
 - JWT signing secret
 
-are injected at runtime using Azure App Service Application Settings.
+This allows the same backend Docker image to be reused across environments without rebuilding.
 
-This allows the same Docker image to be used across different environments without modification.
+The frontend differs from the backend because Vite embeds environment variables at **build time**. Values such as `VITE_API_BASE_URL` must therefore be supplied during the Docker build, requiring the image to be rebuilt if they change.
 
 ---
 
 # Networking
 
-The backend communicates with Azure PostgreSQL using the server hostname provided by Azure.
+The backend connects to Azure PostgreSQL using the server hostname provided by Azure.
 
 Firewall rules allow:
 
 - Azure services
 - Developer workstation for database administration
+
+The backend is configured to accept requests from both the local development frontend (`http://localhost:5173` and `http://localhost:8081`). The frontend's production URL will be added once it is deployed.
 
 ---
 
@@ -88,17 +102,19 @@ Firewall rules allow:
 
 - Azure PostgreSQL deployment
 - Dockerized Spring Boot backend
+- Dockerized React frontend
 - GitHub Container Registry integration
-- Azure App Service deployment
-- Authentication module deployed
-- Register
-- Login
-- Refresh Token
-- Logout
+- Azure App Service backend deployment
+- Local Docker Compose environment (`postgres` + `backend` + `frontend`)
+- Authentication module
+  - Register
+  - Login
+  - Refresh Token
+  - Logout
 
 ## Planned
 
-- Frontend deployment
-- CI/CD with GitHub Actions
+- Frontend deployment to Azure
+- Automated CI/CD deployment
 - Production monitoring
 - HTTPS custom domain
