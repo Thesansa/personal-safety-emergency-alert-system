@@ -1,362 +1,98 @@
-# Architecture, Security & Deployment Decisions
-
-This document records the key architectural, security, and deployment decisions made during the development of the Personal Safety Emergency Alert System MVP.
-
-Each decision explains the reasoning behind the selected approach, its benefits, known MVP trade-offs, and possible future improvements.
-
----
-
-# Decision 1 — Magic Link Authentication
-
-## Decision
-
-Trusted contacts will access active alerts using secure one-time magic links instead of requiring user accounts.
-
-## Reason
-
-During emergencies, trusted contacts should be able to access an active alert immediately without registration or authentication.
-
-Reducing friction during a safety-critical situation is prioritised over requiring authenticated access.
-
-## Security Measures
-
-- Random UUID access token
-- Token stored in the database
-- Token linked to a specific notification
-- Token becomes invalid once the alert is resolved
-- Optional access logging
-
-## Known MVP Trade-off
-
-A trusted contact could forward the magic link to another person.
-
-This risk is considered acceptable for the MVP to prioritise rapid emergency access.
-
-Future versions may introduce authenticated trusted contact accounts.
-
----
-
-# Decision 2 — JWT Authentication with Refresh Tokens
-
-## Decision
-
-The backend uses short-lived JWT Access Tokens together with Refresh Tokens.
-
-## Reason
-
-Using only JWT access tokens would require users to log in again every time the access token expires.
-
-Refresh tokens provide a better user experience while maintaining security through short-lived access tokens.
-
-## Implementation
-
-- Short-lived JWT Access Token
-- Long-lived Refresh Token
-- Refresh Tokens stored as hashes in the database
-- Refresh Token rotation on every refresh request
-- Refresh Token revocation during logout
-- Automatic access token renewal through a React Axios interceptor
-
-## Benefits
-
-- Improved user experience
-- Better security than long-lived JWTs
-- Session revocation support
-- Supports multiple active sessions
-- Stateless API authentication
-
-## Trade-offs
-
-- Additional authentication logic
-- Refresh token storage and rotation
-- Slightly increased implementation complexity
-
-## Known Security Considerations
-
-The `/api/auth/refresh` endpoint authenticates solely through possession of a valid refresh token.
-
-Its security relies on:
-
-- HTTPS in non-local environments
-- Refresh Tokens stored in HttpOnly cookies (planned frontend implementation)
-- Token rotation
-- Token revocation on logout
-- Refresh Tokens stored as hashes instead of plain text
-
-Device binding and IP validation are not implemented in the MVP.
-
----
-
-# Decision 3 — Database Schema Management
-
-## Decision
-
-Hibernate automatic schema generation is used during MVP development.
-
-```properties
-spring.jpa.hibernate.ddl-auto=update
-```
-
-## Reason
-
-The database schema is expected to change frequently during early development.
-
-Automatically synchronising entity classes with the database significantly accelerates development.
-
-## Benefits
-
-- Faster prototyping
-- Simplified development
-- Reduced manual SQL maintenance
-- Database schema stays synchronised with JPA entities
-
-## Known MVP Trade-off
-
-Hibernate schema generation is not appropriate for production environments because schema changes are not version-controlled.
-
-Future versions should migrate to Flyway (or Liquibase) migrations.
-
----
-
-# Decision 4 — Secrets Management
-
-## Decision
-
-Sensitive configuration values are excluded from version control.
-
-## Protected Secrets
-
-- JWT Secret
-- Database Password
-- Email Credentials
-- API Keys
-- Other sensitive configuration
-
-## Implementation
-
-Development secrets are stored locally using configuration files or environment variables.
-
-Sensitive files are excluded using `.gitignore`.
-
-Only example configuration files are committed.
-
-## Benefits
-
-- Prevents accidental credential exposure
-- Supports multiple deployment environments
-- Follows secure DevOps practices
-
----
-
-# Decision 5 — Rate Limiting
-
-## Decision
-
-Rate limiting will not be implemented during the MVP.
-
-## Reason
-
-The current priority is completing the authentication workflow and emergency alert functionality.
-
-Proper rate limiting requires additional infrastructure such as:
-
-- Bucket4j
-- Redis
-- API Gateway
-- Reverse Proxy configuration
-
-These are intentionally deferred until after the MVP.
-
-## Known MVP Trade-off
-
-Authentication endpoints remain vulnerable to brute-force login attempts.
-
-## Future Enhancement
-
-Possible implementations include:
-
-- IP-based request limiting
-- User-based login throttling
-- Temporary account lockout
-- Distributed rate limiting using Redis
-
----
-
-# Decision 6 — Dockerised Local Development
-
-## Decision
-
-The backend and PostgreSQL database are containerised using Docker Compose.
-
-## Reason
-
-Running application services inside containers provides a consistent development environment independent of the host operating system.
-
-Docker Compose also simplifies service orchestration by starting all required services together.
-
-## Implementation
-
-Docker Compose is responsible for:
-
-- Building the Spring Boot backend image
-- Pulling the PostgreSQL image
-- Creating an isolated Docker network
-- Creating persistent database volumes
-- Performing PostgreSQL health checks
-- Starting the backend after PostgreSQL becomes healthy
-- Allowing service-to-service communication using Docker DNS
-
-The backend communicates with PostgreSQL using the service name:
-
-```
-postgres
-```
-
-instead of
-
-```
-localhost
-```
-
-## Benefits
-
-- Consistent development environments
-- Simplified project setup
-- Environment isolation
-- Persistent database storage
-- Production-like networking
-- Easy onboarding for contributors
-
-## Known MVP Trade-off
-
-The current Docker Compose configuration is intended for local development only.
-
-Future production deployments will require:
-
-- Environment-specific Compose files
-- Secrets management
-- Reverse proxy
-- HTTPS
-- Container orchestration
-
----
-
-# Decision 7 — Layered Backend Architecture
-
-## Decision
-
-The backend follows Spring Boot's layered architecture.
-
-```
-Controller
-      ↓
-Service
-      ↓
-Repository
-      ↓
-PostgreSQL
-```
-
-## Reason
-
-Separating responsibilities improves maintainability, readability, and testing.
-
-Each layer has a single responsibility.
-
-## Layer Responsibilities
-
-### Controller
-
-- REST API endpoints
-- Request validation
-- HTTP responses
-
-### Service
-
-- Business logic
-- Authentication
-- Alert lifecycle
-- Notification coordination
-
-### Repository
-
-- Database access
-- CRUD operations
-- Custom queries
-
-### Database
-
-- Persistent application data
-- Relationships
-- Alert history
-- User information
-
-## Benefits
-
-- Separation of concerns
-- Easier testing
-- Better maintainability
-- Improved scalability
-- Easier future refactoring
-
-# Decision 8 — Azure Cloud Deployment
-
-## Decision
-
-The backend is deployed to Microsoft Azure using Azure App Service and Azure PostgreSQL Flexible Server.
-
-## Reason
-
-The project forms part of the IEEE Young Protégé DevOps mentorship programme, where Azure is the primary cloud platform used throughout the learning journey.
-
-Deploying to Azure provides practical experience with cloud infrastructure, managed database services, container hosting, and cloud configuration.
-
-## Deployment Stack
-
-- Azure App Service (Linux)
-- Azure PostgreSQL Flexible Server
-- GitHub Container Registry (GHCR)
-
-## Benefits
-
-- Managed cloud infrastructure
-- Fully hosted PostgreSQL database
-- Container-based deployment
-- Easy scalability
-- Cloud-native environment
-
-## Trade-offs
-
-Deployment is currently manual.
-
-Each deployment requires:
-
-- Docker image build
-- Docker image push
-- Azure App Service update
-
-## Future Enhancement
-
-Deployment will be automated using GitHub Actions to achieve continuous deployment after each successful merge to the `main` branch.
-
-## Azure Recovery (2026-07-31)
-
-### Problem
-- App Service entered QuotaExceeded state.
-- Backend returned 503.
-- Original App Service became unusable.
-
-### Solution
-- Deleted the faulty Web App.
-- Recreated the App Service Plan.
-- Recreated the Web App.
-- Reconfigured GitHub Container Registry.
-- Restored App Settings.
-- Reconnected Azure PostgreSQL.
-- Verified successful container startup.
-
-### Result
-- Spring Boot application started successfully.
-- Registration and authentication worked.
-- Frontend redirected users to the dashboard.
-
+# Deployment Decisions
+
+This document covers the full path from provisioning the database through deploying both the
+backend and frontend, including the constraints hit along the way and why each choice was made.
+
+## Why Azure at all
+This project is part of an IEEE Young Protégé DevOps learning track with a mentor, using an
+Azure for Students subscription provided for that purpose. Alternative platforms (Render,
+Railway) were considered and are genuinely simpler for a plain student side project — but were
+deliberately not used here, since the manual, hands-on Azure setup (resource groups, firewall
+rules, App Service configuration) *is* the intended learning outcome for this specific program,
+not overhead to avoid.
+
+## Region selection — constrained, not chosen freely
+**Attempted:** `eastus`, then `eastus2`, `centralus` — all rejected.
+**Found:** Azure for Students subscriptions are restricted to a small, account-specific set of
+allowed regions, surfaced via the Azure Portal's Policy → Authoring → Assignments →
+"Allowed resource deployment regions" screen (not queryable via the standard "Allowed locations"
+policy name).
+**This account's allowed regions:** `indonesiacentral`, `centralindia`, `austriaeast`,
+`malaysiawest`, `eastasia`.
+**Decision:** `centralindia` — geographically closest to Sri Lanka among the allowed options.
+All resources (database, both App Services) are provisioned here.
+
+## Resource provider registration
+New Azure subscriptions don't have every service namespace active by default. Creating the
+Postgres server first failed with `MissingSubscriptionRegistration` until
+`Microsoft.DBforPostgreSQL` was explicitly registered; `Microsoft.Web` and
+`Microsoft.ContainerRegistry` were registered proactively at the same time. Registering a
+provider is a permissions flag, not a resource — it draws no cost.
+
+## Database
+**Chosen:** PostgreSQL Flexible Server, Burstable tier (`Standard_B1ms`), 32 GB storage — the
+current generation of Azure's Postgres offering, at its cheapest compute tier.
+**Firewall:** two rules — `AllowAllAzureServicesAndResourcesWithinAzureIps` (lets the backend
+App Service reach it) and `AllowMyIP` (direct local `psql` testing).
+**Cost habit:** stopped between work sessions to conserve the $100 student credit, since the
+server draws credit continuously while running regardless of load. Azure auto-restarts a
+stopped server after 7 days regardless — expected, not a leak.
+
+## Container registry — ACR vs. GHCR
+**Rejected ACR:** no free tier at any size (Basic ≈ $0.167/day, continuous draw on credit).
+**Chosen: GitHub Container Registry (GHCR)** — free at this project's scale, reuses existing
+GitHub credentials. Confirmed Azure App Service (including F1) can pull from any registry, not
+just ACR, before committing to this path.
+**Trade-off accepted:** GHCR packages default to private, so both App Services need explicit
+username + PAT credentials to pull — more manual than ACR's native Azure integration, but a
+reasonable trade for the cost savings.
+
+## Hosting tier and quota behavior
+**Chosen:** App Service Plan, Linux, **F1 (Free)** tier — confirmed via Microsoft's own
+documentation to support custom Docker containers before committing to this path.
+**Real limitation, discovered (not merely theoretical):** F1 apps have a genuine daily quota of
+**60 CPU-minutes**, resetting at midnight UTC — not a cost limit, but an availability one.
+Running the backend continuously for several days led to a `403 Quota Exceeded` state requiring
+the app to be deleted and recreated. **Correction adopted:** both App Services are now stopped
+between work sessions, the same discipline as the database, specifically to avoid
+re-accumulating toward this quota — not for cost, since F1 is free regardless of state.
+**Plan sharing:** confirmed the CPU-minute quota is per-app, not pooled across a plan — hosting
+both frontend and backend on one shared `sos-mvp-plan` does not increase this risk.
+
+## Secrets management
+No secrets are baked into either Docker image. Both ship with only placeholder/template
+configuration (`application.properties.example` for the backend; Vite's build-time `ARG`/`ENV`
+mechanism for the frontend). Real values — database credentials, JWT signing key — are injected
+via **Azure App Service Application Settings** at runtime for the backend, and via
+`--build-arg` at image-build time for the frontend (a necessary difference: Vite bakes
+environment variables into the compiled JS at build time, not at container startup, so changing
+the frontend's API URL requires rebuilding the image, not just changing a running container's
+environment).
+
+**Incidents handled:** a GHCR Personal Access Token was briefly exposed in plaintext during
+backend setup — revoked and rotated immediately on discovery. Applied the same standard
+consistently across the project (also done once for a local Postgres password).
+
+## CORS
+Spring Security requires an exact origin match, including port. Three origins are currently
+allowed on the backend, added incrementally as each new frontend environment came online:
+- `http://localhost:5173` — Vite dev server
+- `http://localhost:8081` — Dockerized frontend, tested locally via Docker Compose
+- `https://sos-semali-frontend.azurewebsites.net` — the deployed frontend
+
+Each addition required a full backend redeploy (rebuild → push to GHCR → restart App Service),
+performed three times total over the course of this project — a manual step that automating via
+CD would remove going forward.
+
+## Current state
+- **Backend:** live at `https://sos-semali-backend.azurewebsites.net`, container pulled from a
+  private GHCR image, connected to the managed Azure PostgreSQL instance.
+- **Frontend:** live at `https://sos-semali-frontend.azurewebsites.net`, same GHCR + App Service
+  pattern, sharing the backend's App Service Plan.
+- **Full stack verified working end-to-end**, live, via a real register/login flow in a browser.
+- **No CD yet** — every deployment (backend or frontend) is currently a manual
+  `docker build` → `docker push` → Azure CLI restart/config sequence. This is the next planned
+  step, per mentor guidance.
+- **Cost:** minimal draw against the $100 student credit; a $5 budget alert configured as an
+  early warning (not a hard stop — the subscription's own $100 spending limit is the actual hard
+  stop, requiring no card on file).
