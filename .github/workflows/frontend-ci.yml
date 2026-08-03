@@ -66,9 +66,5 @@ jobs:
             -t ghcr.io/thesansa/sos-frontend:latest .
           docker push ghcr.io/thesansa/sos-frontend:latest
 
-      - name: Deploy to Azure App Service
-        uses: azure/webapps-deploy@v3
-        with:
-          app-name: sos-semali-frontend
-          publish-profile: ${{ secrets.AZURE_WEBAPP_PUBLISH_PROFILE_FRONTEND }}
-          images: ghcr.io/thesansa/sos-frontend:latest
+      - name: Trigger Azure deployment
+        run: curl -X POST "${{ secrets.AZURE_FRONTEND_CD_WEBHOOK }}"
