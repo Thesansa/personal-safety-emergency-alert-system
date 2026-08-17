@@ -1,93 +1,348 @@
-# CI Workflows
+# CI/CD Workflows
 
-Two independent GitHub Actions workflows validate this repository: `backend-ci.yml` and `frontend-ci.yml`. Both live in `.github/workflows/` and follow the same overall design pattern.
+This repository uses two independent GitHub Actions workflows:
 
-## Why Two Separate Workflows?
+* `.github/workflows/backend-ci-cd.yml`
+* `.github/workflows/frontend-ci-cd.yml`
 
-The backend and frontend use entirely different toolchains (Maven/JDK vs. npm/Node) and evolve independently. Keeping them separate means a frontend-only change does not incur the cost of a full Maven and Docker build, while backend-only changes do not trigger unnecessary Node.js jobs.
+Both follow the same high-level pipeline:
 
-## The Shared Pattern: Always-Run, Conditionally-Executing Steps
-
-Both workflows trigger on every `push` and `pull_request` targeting `main`, regardless of which files changed.
-
-This is a deliberate design choice. GitHub branch protection rules can only require checks **by name**—they cannot express "require this check only when relevant." If a workflow were restricted using top-level `paths` filters, a pull request that did not modify those paths would never produce a status check. If that check were marked as required, the pull request could never be merged because GitHub would wait indefinitely for a check that never ran.
-
-To avoid this, each workflow always starts and always reports a pass/fail result, satisfying branch protection. A `dorny/paths-filter` step then determines whether the expensive build steps should actually execute.
-
-Example:
-
-```yaml
-- name: Check for backend changes
-  uses: dorny/paths-filter@v3
-  id: filter
-  with:
-    filters: |
-      backend:
-        - 'backend/sos-backend/**'
+```text
+Code Push
+   ↓
+Path Check
+   ↓
+CI: Build / Test / Lint
+   ↓
+Docker Image Build
+   ↓
+Push to GHCR
+   ↓
+Azure Deployment
 ```
 
-Subsequent steps are conditioned on the filter output:
+Separating the workflows allows the backend and frontend to be built and deployed independently.
 
-```yaml
-- name: Build with Maven
-  if: steps.filter.outputs.backend == 'true'
-  ...
+---
+
+## Workflow Triggers
+
+Both workflows run on pushes to `main` but only when relevant files change.
+
+| Changed files            | Backend CI/CD | Frontend CI/CD |
+| ------------------------ | ------------: | -------------: |
+| `backend/sos-backend/**` |             ✅ |              ❌ |
+| `frontend/**`            |             ❌ |              ✅ |
+| `README.md`              |             ❌ |              ❌ |
+| Documentation only       |             ❌ |              ❌ |
+
+This avoids unnecessary CI runs and reduces GitHub Actions resource usage.
+
+> **Note:** Top-level `paths` filters are appropriate for the current project because these workflows are not currently used as required branch-protection checks.
+
+---
+
+# Backend CI/CD
+
+**Workflow:** `.github/workflows/backend-ci-cd.yml`
+
+### CI
+
+The backend uses **Spring Boot, Maven, and JDK 21**.
+
+```text
+Checkout
+   ↓
+JDK 21 + Maven Cache
+   ↓
+Create application.properties
+   ↓
+mvn clean package
+   ↓
+Docker Build
 ```
 
-As a result:
+Key steps:
 
-- Documentation-only pull requests complete both **Backend CI** and **Frontend CI** within seconds, with build steps skipped.
-- Backend changes execute only the backend pipeline.
-- Frontend changes execute only the frontend pipeline.
-
-## `backend-ci.yml`
-
-The backend workflow performs the following steps:
-
-1. Checkout the repository.
-2. Run a path filter against `backend/sos-backend/**`.
-3. Set up JDK 21.
-4. Copy `application.properties.example` into place so the project has a valid, secret-free configuration during the build.
+1. Checkout using `actions/checkout@v4`.
+2. Set up JDK 21 using `actions/setup-java@v4`.
+3. Cache Maven dependencies.
+4. Copy `application.properties.example` to `application.properties` for a secret-free CI configuration.
 5. Run:
 
-   ```bash
-   mvn clean package
-   ```
+```bash
+mvn clean package
+```
 
-   This compiles the application and executes the unit test suite (including `AuthServiceTest`), using mocked repositories without requiring a live database.
+This compiles the application, runs the configured tests, and produces the JAR.
 
-6. Build the Docker image to verify that the `Dockerfile` itself is valid and reproducible.
+Current backend tests use mocked repositories, so a live PostgreSQL database is not required.
 
-## `frontend-ci.yml`
+6. Validate the Docker image:
 
-The frontend workflow performs the following steps:
+```bash
+docker build -t nova-sos-backend .
+```
 
-1. Checkout the repository.
-2. Run a path filter against `frontend/**`.
-3. Set up Node.js 20.
-4. Install dependencies using:
+### CD
 
-   ```bash
-   npm ci
-   ```
+After successful CI on `main`:
 
-   Unlike local Windows development (where a cross-platform lockfile inconsistency was encountered), CI always runs on a consistent Linux environment, making `npm ci` safe and deterministic.
+```text
+Backend Docker Image
+       ↓
+GHCR
+       ↓
+Azure Webhook
+       ↓
+Azure Backend Deployment
+```
 
-5. Run:
+The image is published as:
 
-   ```bash
-   npm run lint
-   ```
+```text
+ghcr.io/thesansa/sos-backend:latest
+```
 
-6. Build the production application:
+GitHub Actions authenticates with GHCR using `GITHUB_TOKEN`.
 
-   ```bash
-   npm run build
-   ```
+Deployment is triggered through:
 
-## Current Limitations
+```text
+AZURE_BACKEND_CD_WEBHOOK
+```
 
-The workflows intentionally focus on continuous integration rather than continuous deployment.
+---
 
-- **No automated deployment (CD).** Successful builds do not automatically deploy to Azure. Deployment is currently performed manually by building the Docker image, pushing it to GitHub Container Registry (GHCR), and restarting the Azure container so it pulls the latest image.
-- **No integration tests.** The backend and frontend are validated independently. End-to-end verification of the complete frontend → backend → PostgreSQL flow is currently performed manually against the deployed Azure environment.
+# Frontend CI/CD
+
+**Workflow:** `.github/workflows/frontend-ci-cd.yml`
+
+The frontend uses **React, Vite, Node.js 20, and npm**.
+
+### CI
+
+```text
+Checkout
+   ↓
+Node.js 20 + npm Cache
+   ↓
+npm ci
+   ↓
+npm run lint
+   ↓
+npm run build
+   ↓
+Docker Build
+```
+
+Key steps:
+
+1. Checkout using `actions/checkout@v4`.
+2. Set up Node.js 20 using `actions/setup-node@v4`.
+3. Cache npm dependencies using `frontend/package-lock.json`.
+4. Install dependencies:
+
+```bash
+npm ci
+```
+
+5. Run linting:
+
+```bash
+npm run lint
+```
+
+6. Build the production frontend:
+
+```bash
+npm run build
+```
+
+The build receives `VITE_API_BASE_URL` so the generated application knows which backend API to communicate with.
+
+7. Validate the frontend Docker image using the same `VITE_API_BASE_URL` as a Docker build argument.
+
+### CD
+
+After successful CI on `main`:
+
+```text
+Frontend Docker Image
+       ↓
+GHCR
+       ↓
+Azure Webhook
+       ↓
+Azure Frontend Deployment
+```
+
+The image is published as:
+
+```text
+ghcr.io/thesansa/sos-frontend:latest
+```
+
+Deployment is triggered through:
+
+```text
+AZURE_FRONTEND_CD_WEBHOOK
+```
+
+---
+
+# Dependency Caching
+
+Caching improves build speed by avoiding repeated dependency downloads.
+
+| Workflow | Tool  | Cache              |
+| -------- | ----- | ------------------ |
+| Backend  | Maven | `~/.m2/repository` |
+| Frontend | npm   | npm package cache  |
+
+The frontend cache uses `frontend/package-lock.json` to determine dependency state.
+
+Caching is only an optimization. The workflows still perform normal builds and dependency installation:
+
+```bash
+mvn clean package
+npm ci
+npm run build
+```
+
+---
+
+# CI vs CD
+
+**Continuous Integration (CI)** verifies that the application is buildable and passes its automated checks.
+
+```text
+Checkout
+   ↓
+Dependencies
+   ↓
+Tests / Lint
+   ↓
+Application Build
+   ↓
+Docker Build
+```
+
+**Continuous Deployment (CD)** publishes the validated image and deploys it.
+
+```text
+Successful CI
+   ↓
+Docker Image
+   ↓
+GHCR
+   ↓
+Azure Webhook
+   ↓
+Azure Deployment
+```
+
+---
+
+# Testing Scope
+
+| Component              | Current CI validation                |
+| ---------------------- | ------------------------------------ |
+| Backend                | Maven build + unit/service tests     |
+| Frontend               | `npm ci` + ESLint + production build |
+| Docker                 | Backend and frontend image builds    |
+| PostgreSQL             | Not used during current unit tests   |
+| Full-stack integration | Not currently automated              |
+
+The current pipeline does **not** automatically test the complete:
+
+```text
+Frontend → Backend → Hibernate/JPA → PostgreSQL
+```
+
+flow.
+
+---
+
+# Overall Architecture
+
+```text
+                         GitHub Repository
+                                │
+                              Push
+                                │
+                ┌───────────────┴───────────────┐
+                │                               │
+         Backend changed?                Frontend changed?
+                │                               │
+               YES                             YES
+                │                               │
+                ▼                               ▼
+       Backend CI/CD                    Frontend CI/CD
+                │                               │
+        Build + Test + Docker          Lint + Build + Docker
+                │                               │
+                ▼                               ▼
+              GHCR                            GHCR
+                │                               │
+                ▼                               ▼
+             Azure                            Azure
+            Backend                          Frontend
+```
+
+---
+
+# Current Architecture
+
+| Area                     | Decision                         |
+| ------------------------ | -------------------------------- |
+| CI/CD                    | GitHub Actions                   |
+| Backend                  | Spring Boot + JDK 21 + Maven     |
+| Frontend                 | React + Vite + Node.js 20        |
+| Containerization         | Docker                           |
+| Registry                 | GitHub Container Registry (GHCR) |
+| Backend deployment       | Azure                            |
+| Frontend deployment      | Azure                            |
+| Deployment trigger       | Azure Webhooks                   |
+| Database                 | PostgreSQL                       |
+| Backend cache            | Maven                            |
+| Frontend cache           | npm                              |
+| Full integration testing | Not currently automated          |
+| Image tagging            | `latest`                         |
+
+---
+
+# Security
+
+Secrets must never be committed to the repository.
+
+Examples include:
+
+* Database passwords
+* JWT secrets
+* Azure credentials
+* Deployment webhook URLs
+
+Backend secrets should be supplied through the deployment environment, such as Azure App Settings.
+
+`VITE_API_BASE_URL` is different from a secret because frontend build-time values are ultimately exposed to the browser.
+
+---
+
+# Future Improvements
+
+Potential improvements include:
+
+* PostgreSQL integration tests in CI.
+* Full frontend → backend → database testing.
+* Post-deployment health checks and smoke tests.
+* Automated deployment verification.
+* Image versioning instead of relying only on `latest`.
+* Deployment rollback strategy.
+* Docker image security scanning.
+* Dependency vulnerability scanning.
+* Separate staging and production environments.
+* Improved CI/CD observability.
+
+---
+
