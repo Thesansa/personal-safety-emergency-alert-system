@@ -43,6 +43,8 @@ public class RefreshToken {
         @PrePersist
         protected void onCreate() {
             this.createdAt = LocalDateTime.now();
+
+            
         }
     }
 
