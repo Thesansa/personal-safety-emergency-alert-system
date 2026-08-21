@@ -1,6 +1,6 @@
 # Backend Development Architecture
 
-The backend will be developed using Spring Boot following a layered architecture.
+The backend is developed using Spring Boot following a layered architecture.
 
 ---
 
@@ -49,7 +49,7 @@ Repositories interact with PostgreSQL using Spring Data JPA.
 
 - Define the exact shape of data crossing the HTTP boundary (requests and responses)
 - Carry validation rules (`@NotBlank`, `@Email`, `@Size`, etc.)
-- Keep the API contract independent of the database schema—entity fields (e.g., `passwordHash`) never leak directly into a response
+- Keep the API contract independent of the database schema — entity fields (e.g., `passwordHash`) never leak directly into a response
 
 DTOs are intentionally separate classes from entities, even when their fields overlap, so the database structure and the API contract can evolve independently.
 
@@ -59,10 +59,14 @@ DTOs are intentionally separate classes from entities, even when their fields ov
 
 ### Responsibilities
 
-- Authenticate every incoming request via JWT (`JwtAuthFilter`), which runs before the request reaches any controller
-- Decide which routes require authentication (`SecurityConfig`)—`/register`, `/login`, and `/refresh` are public; everything else requires a valid token
-- Issue and validate JSON Web Tokens (`JwtUtil`)—short-lived access tokens (stateless, no database lookup required) paired with longer-lived, database-backed, revocable refresh tokens
-- Hash passwords one-way using BCrypt (`PasswordEncoder`)—passwords are never stored or compared in plaintext
+- Authenticate incoming requests via JWT (`JwtAuthFilter`), which runs before the request reaches any controller
+- Decide which routes require authentication (`SecurityConfig`) — `/register`, `/login`, and `/refresh` are public; everything else requires a valid token
+- Issue and validate JSON Web Tokens (`JwtUtil`)
+- Use short-lived, stateless access tokens
+- Use longer-lived, database-backed and revocable refresh tokens
+- Rotate refresh tokens when they are successfully used
+- Revoke refresh tokens when required, including during logout
+- Hash passwords one-way using BCrypt (`PasswordEncoder`) — passwords are never stored or compared in plaintext
 
 ---
 
@@ -74,6 +78,7 @@ DTOs are intentionally separate classes from entities, even when their fields ov
 - Maintain relationships
 - Preserve alert history
 - Persist user information
+- Store hashed refresh tokens and their expiration/revocation information
 
 ---
 
@@ -93,7 +98,7 @@ The backend is packaged as a Docker image using a **multi-stage build**:
 - **Build stage** — Uses a full Maven + JDK 21 image to compile the source code and package the application into a `.jar`.
 - **Runtime stage** — Starts from a minimal JRE-only image and copies in only the finished `.jar`, discarding the build tools. This keeps the final image significantly smaller.
 
-Configuration (`application.properties`) uses `${VARIABLE_NAME:default}` placeholder syntax throughout, allowing the same image to run locally, via Docker Compose, or on Azure. Only the runtime environment variables change—no rebuild is required when switching environments.
+Configuration (`application.properties`) uses `${VARIABLE_NAME:default}` placeholder syntax throughout, allowing the same image to run locally, via Docker Compose, or on Azure. Only the runtime environment variables change — no rebuild is required when switching environments.
 
 For **local development**, `docker-compose.yml` orchestrates two containers:
 
@@ -106,64 +111,35 @@ Docker Compose automatically creates the network connecting both containers.
 
 # CI/CD Pipeline (GitHub Actions)
 
-A workflow (`.github/workflows/backend-ci.yml`) runs automatically on every push and pull request targeting the `main` branch.
+The backend uses a GitHub Actions workflow to validate and build the backend when relevant backend files are changed.
 
-## Workflow Steps
+The workflow uses path-based conditions so unrelated repository changes do not unnecessarily trigger the backend workflow.
+
+## CI Workflow Steps
 
 1. Check out the repository
-2. Install JDK 21
-3. Copy `application.properties.example` to `application.properties` so the application has a valid configuration without exposing secrets
-4. Run `mvn clean package`, compiling the application and executing the unit test suite
-5. Build the Docker image to verify that the `Dockerfile` itself is valid
+2. Set up JDK 21
+3. Prepare the required application configuration without exposing secrets
+4. Restore/cache Maven dependencies
+5. Compile the backend
+6. Run the unit test suite
+7. Build the Docker image
 
-A `paths-filter` step ensures the workflow always reports a status (required for branch protection) while skipping the Docker build whenever backend files were not modified. This keeps CI execution fast for unrelated changes.
+The workflow is designed to keep CI execution efficient by avoiding unnecessary backend builds when only unrelated parts of the repository are changed.
 
----
+## Continuous Deployment
 
-# Testing Strategy
+The current CD process builds the backend Docker image, pushes it to GitHub Container Registry (GHCR), and triggers the Azure deployment process.
 
-Unit tests for `AuthService` (`AuthServiceTest`) use Mockito to mock every dependency:
+The current deployment scope is:
 
-- `UserRepository`
-- `RefreshTokenRepository`
-- `PasswordEncoder`
-- `JwtUtil`
-
-Because all dependencies are mocked, no real database is required. These tests verify business logic in isolation, including:
-
-- Duplicate email rejection
-- Password validation
-- Refresh token rotation
-- Refresh token expiration and revocation
-- Logout functionality
-
-This approach ensures tests run quickly and consistently both locally and in CI.
-
-## Removed Test
-
-The default Spring Initializr test (`SosBackendApplicationTests`) was removed because it attempted to start the full Spring application context, including a real PostgreSQL connection.
-
-Although this worked locally, it failed on GitHub Actions because the CI runner does not include a running database. Since the test only verified application startup and did not exercise business logic, it was replaced with meaningful unit tests.
-
-Future modules will follow the same pattern:
-
-- Mock the repository layer
-- Test service-layer business logic
-- Avoid requiring a live database during CI
-
----
-
-# Deployment (Azure)
-
-The backend is deployed to **Azure App Service** (Linux, F1 Free Tier) as a Docker container pulled from **GitHub Container Registry (GHCR)** instead of Azure Container Registry (ACR). GHCR was chosen to avoid the ongoing cost of ACR while still being fully supported by Azure App Service.
-
-Application secrets, including:
-
-- Database credentials
-- JWT signing key
-
-are provided through **Azure App Settings** at runtime. They are never stored inside the Docker image and use the same `${VARIABLE_NAME:default}` configuration mechanism used for local development.
-
-The database is hosted on **Azure Database for PostgreSQL (Flexible Server, Burstable Tier)**. The rationale, regional considerations, and cost trade-offs are documented separately in `deployment/decisions.md`.
-
-HTTPS is enforced on the deployed App Service. The complete API reference and production base URL are documented in `docs/api.md`.
+```text
+Backend changes
+      ↓
+CI
+      ↓
+Docker image build
+      ↓
+Push image to GHCR
+      ↓
+Trigger Azure deployment
