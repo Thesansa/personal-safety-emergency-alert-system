@@ -1,6 +1,7 @@
 package com.semali.sosbackend.service;
 
 import com.semali.sosbackend.dto.LoginRequest;
+import com.semali.sosbackend.dto.RefreshRequest;
 import com.semali.sosbackend.dto.RegisterRequest;
 import com.semali.sosbackend.entity.RefreshToken;
 import com.semali.sosbackend.entity.User;
@@ -13,6 +14,7 @@ import com.semali.sosbackend.security.JwtUtil;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -24,16 +26,24 @@ import java.util.Optional;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
 class AuthServiceTest {
 
-    @Mock private UserRepository userRepository;
-    @Mock private RefreshTokenRepository refreshTokenRepository;
-    @Mock private PasswordEncoder passwordEncoder;
-    @Mock private JwtUtil jwtUtil;
+    @Mock
+    private UserRepository userRepository;
+
+    @Mock
+    private RefreshTokenRepository refreshTokenRepository;
+
+    @Mock
+    private PasswordEncoder passwordEncoder;
+
+    @Mock
+    private JwtUtil jwtUtil;
 
     @InjectMocks
     private AuthService authService;
@@ -41,7 +51,11 @@ class AuthServiceTest {
     @BeforeEach
     void setUp() {
         // Mirrors the @Value-injected field from application.properties
-        ReflectionTestUtils.setField(authService, "refreshTokenExpirationMs", 2592000000L);
+        ReflectionTestUtils.setField(
+                authService,
+                "refreshTokenExpirationMs",
+                2592000000L
+        );
     }
 
     // ---------- REGISTER ----------
@@ -53,11 +67,14 @@ class AuthServiceTest {
         request.setNic("199912345678");
         request.setContactNo("0771234567");
 
-        when(userRepository.existsByEmail("test@example.com")).thenReturn(true);
+        when(userRepository.existsByEmail("test@example.com"))
+                .thenReturn(true);
 
-        assertThrows(DuplicateResourceException.class, () -> authService.register(request));
+        assertThrows(
+                DuplicateResourceException.class,
+                () -> authService.register(request)
+        );
 
-        // Confirms we never got as far as saving a user once the duplicate was found
         verify(userRepository, never()).save(any());
     }
 
@@ -73,8 +90,11 @@ class AuthServiceTest {
         when(userRepository.existsByEmail(anyString())).thenReturn(false);
         when(userRepository.existsByNic(anyString())).thenReturn(false);
         when(userRepository.existsByContactNo(anyString())).thenReturn(false);
-        when(passwordEncoder.encode("SecurePass123")).thenReturn("hashed_password");
-        when(jwtUtil.generateAccessToken(anyString(), anyString())).thenReturn("fake-access-token");
+        when(passwordEncoder.encode("SecurePass123"))
+                .thenReturn("hashed_password");
+
+        when(jwtUtil.generateAccessToken(anyString(), anyString()))
+                .thenReturn("fake-access-token");
 
         when(userRepository.save(any(User.class))).thenAnswer(invocation -> {
             User savedUser = invocation.getArgument(0);
@@ -87,7 +107,9 @@ class AuthServiceTest {
         assertEquals("new@example.com", response.getEmail());
         assertNotNull(response.getAccessToken());
         assertNotNull(response.getRefreshToken());
-        verify(refreshTokenRepository).save(any(RefreshToken.class));
+
+        verify(refreshTokenRepository)
+                .save(any(RefreshToken.class));
     }
 
     // ---------- LOGIN ----------
@@ -98,9 +120,13 @@ class AuthServiceTest {
         request.setEmail("nobody@example.com");
         request.setPassword("whatever");
 
-        when(userRepository.findByEmail("nobody@example.com")).thenReturn(Optional.empty());
+        when(userRepository.findByEmail("nobody@example.com"))
+                .thenReturn(Optional.empty());
 
-        assertThrows(InvalidCredentialsException.class, () -> authService.login(request));
+        assertThrows(
+                InvalidCredentialsException.class,
+                () -> authService.login(request)
+        );
     }
 
     @Test
@@ -115,57 +141,224 @@ class AuthServiceTest {
                 .passwordHash("correct_hash")
                 .build();
 
-        when(userRepository.findByEmail("test@example.com")).thenReturn(Optional.of(existingUser));
-        when(passwordEncoder.matches("wrongPassword", "correct_hash")).thenReturn(false);
+        when(userRepository.findByEmail("test@example.com"))
+                .thenReturn(Optional.of(existingUser));
 
-        assertThrows(InvalidCredentialsException.class, () -> authService.login(request));
+        when(passwordEncoder.matches(
+                "wrongPassword",
+                "correct_hash"
+        )).thenReturn(false);
+
+        assertThrows(
+                InvalidCredentialsException.class,
+                () -> authService.login(request)
+        );
     }
 
-    // ---------- REFRESH ----------
+    // ---------- REFRESH TOKEN ----------
+
+    @Test
+    void refresh_shouldReturnNewTokens_whenTokenIsValid() {
+
+        // Arrange
+        User user = User.builder()
+                .id(UUID.randomUUID())
+                .fullName("Test User")
+                .email("test@example.com")
+                .build();
+
+        RefreshToken existingToken = RefreshToken.builder()
+                .id(UUID.randomUUID())
+                .user(user)
+                .tokenHash("hashed-existing-token")
+                .revoked(false)
+                .expiresAt(LocalDateTime.now().plusDays(1))
+                .build();
+
+        RefreshRequest request = new RefreshRequest();
+        request.setRefreshToken("valid-raw-token");
+
+        when(refreshTokenRepository.findByTokenHash(anyString()))
+                .thenReturn(Optional.of(existingToken));
+
+        when(jwtUtil.generateAccessToken(
+                user.getId().toString(),
+                user.getEmail()
+        )).thenReturn("new-access-token");
+
+        // Act
+        var response = authService.refresh(request);
+
+        // Assert
+        assertNotNull(response);
+        assertEquals("new-access-token", response.getAccessToken());
+        assertNotNull(response.getRefreshToken());
+
+        // The old refresh token must be revoked
+        assertTrue(existingToken.isRevoked());
+
+        // Old token is saved after being revoked
+        verify(refreshTokenRepository)
+                .save(existingToken);
+
+        // A new refresh token is also created and saved
+        verify(refreshTokenRepository, times(2))
+                .save(any(RefreshToken.class));
+    }
+
+    @Test
+    void refresh_shouldThrow_whenTokenDoesNotExist() {
+
+        // Arrange
+        RefreshRequest request = new RefreshRequest();
+        request.setRefreshToken("unknown-token");
+
+        when(refreshTokenRepository.findByTokenHash(anyString()))
+                .thenReturn(Optional.empty());
+
+        // Act + Assert
+        assertThrows(
+                InvalidTokenException.class,
+                () -> authService.refresh(request)
+        );
+
+        // No token should be saved
+        verify(refreshTokenRepository, never())
+                .save(any(RefreshToken.class));
+    }
 
     @Test
     void refresh_shouldThrow_whenTokenIsRevoked() {
+
+        // Arrange
         RefreshToken revokedToken = RefreshToken.builder()
                 .id(UUID.randomUUID())
                 .revoked(true)
                 .expiresAt(LocalDateTime.now().plusDays(1))
                 .build();
 
-        when(refreshTokenRepository.findByTokenHash(anyString())).thenReturn(Optional.of(revokedToken));
+        when(refreshTokenRepository.findByTokenHash(anyString()))
+                .thenReturn(Optional.of(revokedToken));
 
-        var request = new com.semali.sosbackend.dto.RefreshRequest();
+        RefreshRequest request = new RefreshRequest();
         request.setRefreshToken("some-raw-token");
 
-        assertThrows(InvalidTokenException.class, () -> authService.refresh(request));
+        // Act + Assert
+        assertThrows(
+                InvalidTokenException.class,
+                () -> authService.refresh(request)
+        );
+
+        verify(refreshTokenRepository, never())
+                .save(any(RefreshToken.class));
     }
 
     @Test
     void refresh_shouldThrow_whenTokenIsExpired() {
+
+        // Arrange
         RefreshToken expiredToken = RefreshToken.builder()
                 .id(UUID.randomUUID())
                 .revoked(false)
                 .expiresAt(LocalDateTime.now().minusDays(1))
                 .build();
 
-        when(refreshTokenRepository.findByTokenHash(anyString())).thenReturn(Optional.of(expiredToken));
+        when(refreshTokenRepository.findByTokenHash(anyString()))
+                .thenReturn(Optional.of(expiredToken));
 
-        var request = new com.semali.sosbackend.dto.RefreshRequest();
+        RefreshRequest request = new RefreshRequest();
         request.setRefreshToken("some-raw-token");
 
-        assertThrows(InvalidTokenException.class, () -> authService.refresh(request));
+        // Act + Assert
+        assertThrows(
+                InvalidTokenException.class,
+                () -> authService.refresh(request)
+        );
+
+        verify(refreshTokenRepository, never())
+                .save(any(RefreshToken.class));
+    }
+
+    @Test
+    void refresh_shouldRevokeOldTokenAndCreateNewToken_whenRotationOccurs() {
+
+        // Arrange
+        User user = User.builder()
+                .id(UUID.randomUUID())
+                .fullName("Test User")
+                .email("test@example.com")
+                .build();
+
+        RefreshToken oldToken = RefreshToken.builder()
+                .id(UUID.randomUUID())
+                .user(user)
+                .tokenHash("old-token-hash")
+                .revoked(false)
+                .expiresAt(LocalDateTime.now().plusDays(1))
+                .build();
+
+        RefreshRequest request = new RefreshRequest();
+        request.setRefreshToken("old-raw-token");
+
+        when(refreshTokenRepository.findByTokenHash(anyString()))
+                .thenReturn(Optional.of(oldToken));
+
+        when(jwtUtil.generateAccessToken(
+                user.getId().toString(),
+                user.getEmail()
+        )).thenReturn("rotated-access-token");
+
+        ArgumentCaptor<RefreshToken> tokenCaptor =
+                ArgumentCaptor.forClass(RefreshToken.class);
+
+        // Act
+        var response = authService.refresh(request);
+
+        // Assert
+        assertNotNull(response);
+        assertEquals(
+                "rotated-access-token",
+                response.getAccessToken()
+        );
+
+        assertNotNull(response.getRefreshToken());
+
+        // Old token is revoked
+        assertTrue(oldToken.isRevoked());
+
+        // Both the old and newly created tokens are persisted
+        verify(refreshTokenRepository, times(2))
+                .save(tokenCaptor.capture());
+
+        var savedTokens = tokenCaptor.getAllValues();
+
+        // First save = old token after revocation
+        assertTrue(savedTokens.get(0).isRevoked());
+
+        // Second save = newly generated refresh token
+        assertFalse(savedTokens.get(1).isRevoked());
+
+        assertNotNull(savedTokens.get(1).getTokenHash());
+        assertNotNull(savedTokens.get(1).getExpiresAt());
     }
 
     // ---------- LOGOUT ----------
 
     @Test
     void logout_shouldDeleteRefreshTokens_forGivenUser() {
-        UUID userId = UUID.randomUUID();
-        User user = User.builder().id(userId).build();
 
-        when(userRepository.findById(userId)).thenReturn(Optional.of(user));
+        UUID userId = UUID.randomUUID();
+
+        User user = User.builder()
+                .id(userId)
+                .build();
+
+        when(userRepository.findById(userId))
+                .thenReturn(Optional.of(user));
 
         authService.logout(userId);
 
-        verify(refreshTokenRepository).deleteByUser(user);
+        verify(refreshTokenRepository)
+                .deleteByUser(user);
     }
 }
