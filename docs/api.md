@@ -199,3 +199,145 @@ Azure student credit. Please give a heads-up before testing so the database can 
 (takes 1–2 minutes to come online). The App Service itself (free F1 tier) is always available,
 but may take a few extra seconds to respond on the very first request after a period of
 inactivity (cold start).
+
+
+# Trusted Contacts Module API
+
+All endpoints require a valid access token.
+
+Base URL:
+```text
+http://localhost:8080/api/trusted-contacts
+```
+
+---
+
+## 1. Create Trusted Contact
+
+**Endpoint**
+```http
+POST /
+```
+**Headers**
+```http
+Authorization: Bearer <ACCESS_TOKEN>
+Content-Type: application/json
+```
+**Request Body**
+```json
+{
+  "name": "Kamala Perera",
+  "contactNo": "0771112233",
+  "email": "kamala@example.com",
+  "relation": "Mother",
+  "priorityOrder": 1
+}
+```
+**Success Response**
+```http
+201 Created
+```
+
+---
+
+## 2. List Trusted Contacts
+
+**Endpoint**
+```http
+GET /
+```
+**Headers**
+```http
+Authorization: Bearer <ACCESS_TOKEN>
+```
+**Success Response**
+```http
+200 OK
+```
+Returns a list of the authenticated user's contacts, ordered by `priorityOrder`.
+
+---
+
+## 3. Get a Single Trusted Contact
+
+**Endpoint**
+```http
+GET /{id}
+```
+**Headers**
+```http
+Authorization: Bearer <ACCESS_TOKEN>
+```
+**Success Response**
+```http
+200 OK
+```
+
+---
+
+## 4. Update Trusted Contact
+
+**Endpoint**
+```http
+PUT /{id}
+```
+**Headers**
+```http
+Authorization: Bearer <ACCESS_TOKEN>
+Content-Type: application/json
+```
+**Request Body**
+```json
+{
+  "name": "Kamala Perera",
+  "contactNo": "0771112233",
+  "email": "kamala.new@example.com",
+  "relation": "Mother",
+  "priorityOrder": 1
+}
+```
+**Success Response**
+```http
+200 OK
+```
+
+---
+
+## 5. Delete Trusted Contact
+
+**Endpoint**
+```http
+DELETE /{id}
+```
+**Headers**
+```http
+Authorization: Bearer <ACCESS_TOKEN>
+```
+**Success Response**
+```http
+204 No Content
+```
+
+---
+
+## Response Status Codes
+
+| Status Code | Description |
+|---|---|
+| **201 Created** | Contact created successfully |
+| **200 OK** | List, get, or update successful |
+| **204 No Content** | Delete successful |
+| **400 Bad Request** | Invalid request data (e.g. missing name or contact number) |
+| **401 Unauthorized** | Missing or invalid access token |
+| **404 Not Found** | Contact does not exist, or does not belong to the authenticated user |
+
+> **Note:** A `404` on a contact ID that genuinely belongs to another user is intentional — the
+> API never confirms whether a given ID exists for someone else.
+
+## Deployed Environment (Azure)
+
+Base URL:
+```text
+https://sos-semali-backend.azurewebsites.net/api/trusted-contacts
+```
+Same endpoints and behavior as above.

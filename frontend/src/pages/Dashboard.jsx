@@ -51,6 +51,13 @@ function Dashboard() {
           <p className="text-text-secondary mb-1">👋 Welcome back</p>
           <h2 className="text-2xl font-semibold text-success mb-4">You're Safe</h2>
           <p className="text-text-secondary text-sm">No active alerts</p>
+
+          <button
+            onClick={() => navigate('/trusted-contacts')}
+            className="mt-4 text-primary hover:text-primary-hover text-sm font-medium"
+          >
+            Manage Trusted Contacts →
+          </button>
         </div>
       </div>
     </div>
