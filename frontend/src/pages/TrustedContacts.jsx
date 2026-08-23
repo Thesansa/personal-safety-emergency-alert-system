@@ -96,7 +96,6 @@ function TrustedContacts() {
                 await createTrustedContact(payload)
             }
             closeForm()
-            jsx
             await refreshContacts()
         } catch (err) {
             const message = err.response?.data?.message || 'Could not save contact.'
