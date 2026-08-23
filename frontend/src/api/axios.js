@@ -30,6 +30,25 @@ api.interceptors.request.use(
   (error) => Promise.reject(error)
 );
 
+// --- Shared refresh state, so concurrent 401s share ONE refresh call ---
+let isRefreshing = false;
+let refreshSubscribers = [];
+
+function subscribeTokenRefresh(callback) {
+  refreshSubscribers.push(callback);
+}
+
+function onRefreshed(newAccessToken) {
+  refreshSubscribers.forEach((callback) => callback(newAccessToken));
+  refreshSubscribers = [];
+}
+
+function redirectToLogin() {
+  localStorage.removeItem("accessToken");
+  localStorage.removeItem("refreshToken");
+  window.location.href = "/login";
+}
+
 // Automatically refresh expired access tokens
 api.interceptors.response.use(
   (response) => response,
@@ -37,46 +56,52 @@ api.interceptors.response.use(
   async (error) => {
     const originalRequest = error.config;
 
-    // Only attempt refresh for 401 responses
-    // and don't retry the refresh endpoint itself.
     if (
       error.response?.status === 401 &&
       !originalRequest._retry &&
       !originalRequest.url?.includes("/auth/refresh")
     ) {
-      originalRequest._retry = true;
-
       const refreshToken = localStorage.getItem("refreshToken");
 
       if (!refreshToken) {
+        redirectToLogin();
         return Promise.reject(error);
       }
 
+      originalRequest._retry = true;
+
+      // If a refresh is already in flight, queue this request
+      // instead of firing a second, competing refresh call.
+      if (isRefreshing) {
+        return new Promise((resolve) => {
+          subscribeTokenRefresh((newAccessToken) => {
+            originalRequest.headers.Authorization = `Bearer ${newAccessToken}`;
+            resolve(api(originalRequest));
+          });
+        });
+      }
+
+      isRefreshing = true;
+
       try {
-        const response = await api.post("/auth/refresh", {
+        const response = await axios.post(`${API_BASE_URL}/auth/refresh`, {
           refreshToken,
         });
 
-        const { accessToken, refreshToken: newRefreshToken } =
-          response.data;
+        const { accessToken, refreshToken: newRefreshToken } = response.data;
 
-        // Store the rotated tokens
         localStorage.setItem("accessToken", accessToken);
         localStorage.setItem("refreshToken", newRefreshToken);
 
-        // Update the failed request
-        originalRequest.headers.Authorization =
-          `Bearer ${accessToken}`;
+        isRefreshing = false;
+        onRefreshed(accessToken);
 
-        // Retry the original request
+        originalRequest.headers.Authorization = `Bearer ${accessToken}`;
         return api(originalRequest);
-
       } catch (refreshError) {
-        // Refresh token is invalid/expired/revoked.
-        // Clear authentication state.
-        localStorage.removeItem("accessToken");
-        localStorage.removeItem("refreshToken");
-
+        isRefreshing = false;
+        refreshSubscribers = [];
+        redirectToLogin();
         return Promise.reject(refreshError);
       }
     }
