@@ -17,15 +17,27 @@ function Dashboard() {
     }
   }, [navigate])
 
-  const checkForActiveAlert = useCallback(async () => {
-    try {
-      const response = await getAlerts()
-      const active = response.data.find(
-        (a) => a.status === 'ACTIVE' || a.status === 'ESCALATED'
-      )
-      setActiveAlert(active || null)
-    } catch (err) {
-      // Silent — status polling shouldn't interrupt the page with an error banner
+  useEffect(() => {
+    let ignore = false
+
+    const poll = async () => {
+      try {
+        const response = await getAlerts()
+        const active = response.data.find(
+          (a) => a.status === 'ACTIVE' || a.status === 'ESCALATED'
+        )
+        if (!ignore) setActiveAlert(active || null)
+      } catch {
+        // Silent — status polling shouldn't interrupt the page with an error banner
+      }
+    }
+
+    poll()
+    const interval = setInterval(poll, 5000)
+
+    return () => {
+      ignore = true
+      clearInterval(interval)
     }
   }, [])
 
