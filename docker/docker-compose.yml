@@ -33,6 +33,7 @@ services:
       JWT_SECRET: ${JWT_SECRET}
       MAIL_USERNAME: ${MAIL_USERNAME}
       MAIL_PASSWORD: ${MAIL_PASSWORD}
+      TZ: Asia/Colombo
     ports:
       - "8080:8080"
 
