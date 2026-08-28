@@ -1,4 +1,5 @@
-import { useEffect, useState, useCallback } from 'react'
+
+import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ShieldCheck, ShieldAlert, LogOut, Users, TriangleAlert } from 'lucide-react'
 import api from '../api/axios'
@@ -41,11 +42,6 @@ function Dashboard() {
     }
   }, [])
 
-  useEffect(() => {
-    checkForActiveAlert()
-    const interval = setInterval(checkForActiveAlert, 5000)
-    return () => clearInterval(interval)
-  }, [checkForActiveAlert])
 
   const handleTrigger = () => {
     setError('')
