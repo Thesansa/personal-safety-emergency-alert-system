@@ -61,4 +61,9 @@ public class GlobalExceptionHandler {
     public ResponseEntity<Map<String, Object>> handleResourceNotFound(ResourceNotFoundException ex) {
         return buildResponse(HttpStatus.NOT_FOUND, ex.getMessage());
     }
+
+    @ExceptionHandler(InvalidAlertStateException.class)
+    public ResponseEntity<Map<String, Object>> handleInvalidAlertState(InvalidAlertStateException ex) {
+        return buildResponse(HttpStatus.CONFLICT, ex.getMessage());
+    }
 }
