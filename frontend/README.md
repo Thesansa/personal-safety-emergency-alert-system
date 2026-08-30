@@ -11,9 +11,12 @@ React frontend for the Personal Safety Emergency Alert System, currently coverin
   to prevent competing refresh calls
 - ✅ Refresh-token rotation handling
 - ✅ Trusted Contacts module — list, add, edit, delete, wired to the backend API
+- ✅ SOS trigger UI — Dashboard shows a trigger button when no alert is active, and a live status
+  card (with cancel/resolve actions) when one is, polling the backend every 5 seconds so
+  automatic escalation appears without a page refresh
 - ✅ Dockerized (multi-stage build: Node → Nginx)
 - ✅ Integrated into `docker-compose.yml` alongside backend + PostgreSQL
-- ⬜ SOS trigger UI — next application module
+- ⬜ Alert history / location trail view — not yet built
 
 ---
 
@@ -24,6 +27,7 @@ React frontend for the Personal Safety Emergency Alert System, currently coverin
 - React Router (client-side routing)
 - Axios (API calls and authentication interceptors)
 - Lucide React (icons)
+- Browser Geolocation API (`navigator.geolocation`) — captures the device's location when triggering an SOS alert
 
 ---
 
@@ -33,13 +37,14 @@ React frontend for the Personal Safety Emergency Alert System, currently coverin
 src/
 ├── api/
 │   ├── axios.js               # Axios instance, base URL, and auth interceptors
-│   └── trustedContacts.js     # Trusted Contacts API calls
+│   ├── trustedContacts.js     # Trusted Contacts API calls
+│   └── alerts.js              # Alert trigger/cancel/resolve/list API calls
 ├── context/
 │   └── AuthContext.jsx        # Centralized authentication state
 ├── pages/
 │   ├── Login.jsx
 │   ├── Register.jsx
-│   ├── Dashboard.jsx
+│   ├── Dashboard.jsx          # SOS trigger, live alert status, cancel/resolve
 │   └── TrustedContacts.jsx    # List, add, edit, delete trusted contacts
 ├── App.jsx                    # Route definitions
 ├── main.jsx                   # App entry point, wraps App in BrowserRouter

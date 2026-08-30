@@ -320,24 +320,170 @@ Authorization: Bearer <ACCESS_TOKEN>
 
 ---
 
+
+# Alert Module API
+
+All endpoints require a valid access token.
+
+Base URL:
+```text
+http://localhost:8080/api/alerts
+```
+
+---
+
+## 1. Trigger an Alert
+
+**Endpoint**
+```http
+POST /trigger
+```
+**Headers**
+```http
+Authorization: Bearer <ACCESS_TOKEN>
+Content-Type: application/json
+```
+**Request Body** (optional — an alert can be triggered without a location)
+```json
+{
+  "latitude": 6.9271,
+  "longitude": 79.8612
+}
+```
+**Success Response**
+```http
+201 Created
+```
+Creates the alert with `status: ACTIVE`, logs the transition, saves the given coordinates as the
+first location entry (if provided), and sends an email to every trusted contact (ordered by
+priority).
+
+---
+
+## 2. List Alerts
+
+**Endpoint**
+```http
+GET /
+```
+**Headers**
+```http
+Authorization: Bearer <ACCESS_TOKEN>
+```
+**Success Response**
+```http
+200 OK
+```
+Returns the authenticated user's alerts, most recent first.
+
+---
+
+## 3. Cancel an Alert
+
+**Endpoint**
+```http
+POST /{id}/cancel
+```
+**Headers**
+```http
+Authorization: Bearer <ACCESS_TOKEN>
+```
+**Success Response**
+```http
+200 OK
+```
+Sets `status: CANCELLED`. No notifications are sent on cancellation.
+
+---
+
+## 4. Resolve an Alert
+
+**Endpoint**
+```http
+POST /{id}/resolve
+```
+**Headers**
+```http
+Authorization: Bearer <ACCESS_TOKEN>
+```
+**Success Response**
+```http
+200 OK
+```
+Sets `status: RESOLVED`, `resolvedBy: USER`. No notifications are sent on resolution.
+
+---
+
+## 5. Add a Location Ping
+
+**Endpoint**
+```http
+POST /{id}/locations
+```
+**Headers**
+```http
+Authorization: Bearer <ACCESS_TOKEN>
+Content-Type: application/json
+```
+**Request Body**
+```json
+{
+  "latitude": 6.9200,
+  "longitude": 79.8650
+}
+```
+**Success Response**
+```http
+201 Created
+```
+Only permitted while the alert's status is `ACTIVE` or `ESCALATED`.
+
+---
+
+## 6. Get Location Trail
+
+**Endpoint**
+```http
+GET /{id}/locations
+```
+**Headers**
+```http
+Authorization: Bearer <ACCESS_TOKEN>
+```
+**Success Response**
+```http
+200 OK
+```
+Returns every recorded location for the alert, oldest first.
+
+---
+
+## Escalation (automatic, no endpoint)
+
+Alerts left `ACTIVE` for longer than the configured escalation window (default 45 seconds) are
+automatically transitioned to `ESCALATED` by a background scheduler — no request needed. This
+triggers a second round of email notifications to trusted contacts. The frontend Dashboard polls
+`GET /api/alerts` every 5 seconds while an alert is active, so this transition appears live
+without a page refresh.
+
+---
+
 ## Response Status Codes
 
 | Status Code | Description |
 |---|---|
-| **201 Created** | Contact created successfully |
-| **200 OK** | List, get, or update successful |
-| **204 No Content** | Delete successful |
-| **400 Bad Request** | Invalid request data (e.g. missing name or contact number) |
+| **201 Created** | Alert triggered, or location added |
+| **200 OK** | List, cancel, or resolve successful |
+| **400 Bad Request** | Invalid request data |
 | **401 Unauthorized** | Missing or invalid access token |
-| **404 Not Found** | Contact does not exist, or does not belong to the authenticated user |
-
-> **Note:** A `404` on a contact ID that genuinely belongs to another user is intentional — the
-> API never confirms whether a given ID exists for someone else.
+| **404 Not Found** | Alert does not exist, or does not belong to the authenticated user |
+| **409 Conflict** | Invalid state transition (e.g. adding a location to a resolved alert) |
 
 ## Deployed Environment (Azure)
 
 Base URL:
 ```text
-https://sos-semali-backend.azurewebsites.net/api/trusted-contacts
+https://sos-semali-backend.azurewebsites.net/api/alerts
 ```
-Same endpoints and behavior as above.
+Same endpoints and behavior as above. Email notifications from the deployed environment use the
+same Gmail SMTP account as local development, configured via Azure App Settings.

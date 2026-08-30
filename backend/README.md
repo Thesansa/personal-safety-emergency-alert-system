@@ -70,6 +70,116 @@ DTOs are intentionally separate classes from entities, even when their fields ov
 
 ---
 
+## Trusted Contacts Module
+
+### Responsibilities
+
+- Allow an authenticated user to manage the people who should be notified in an emergency
+- Enforce strict per-user ownership — a user can only view, edit, or delete their own trusted
+  contacts, never another user's
+
+### Data Model
+
+trusted_contacts
+├── id (PK)
+├── user_id (FK → users)
+├── name
+├── contact_no
+├── email (optional)
+├── relation (optional)
+└── priority_order
+
+
+`priority_order` is user-supplied and determines the order trusted contacts are notified in
+during an alert.
+
+### Ownership Enforcement
+
+Every read, update, and delete operation queries by both the record's ID **and** the
+authenticated user's ID in a single repository call (`findByIdAndUserId`), rather than fetching
+by ID alone and checking ownership afterward. If a contact exists but belongs to a different
+user, the query returns nothing, and the API responds with `404 Not Found` — deliberately
+indistinguishable from the contact genuinely not existing.
+
+---
+
+## Alert Module
+
+### Responsibilities
+
+- Trigger, cancel, and resolve emergency alerts
+- Automatically escalate an alert if it remains unresolved past a configurable window
+- Track a location trail for the duration of an active alert
+- Notify trusted contacts by email on trigger and on escalation
+- Log every status transition for audit purposes
+
+### Data Model
+
+alerts
+├── id (PK)
+├── user_id (FK → users)
+├── status (ACTIVE, ESCALATED, RESOLVED, CANCELLED)
+├── triggered_at / escalated_at / resolved_at / cancelled_at
+└── resolved_by (nullable)
+
+alert_status_history
+├── id (PK)
+├── alert_id (FK → alerts)
+├── previous_status / new_status
+├── changed_by (USER / SYSTEM)
+├── changed_at
+└── note
+
+alert_locations
+├── id (PK)
+├── alert_id (FK → alerts)
+├── latitude / longitude
+└── captured_at
+
+alert_notifications
+├── id (PK)
+├── alert_id (FK → alerts)
+├── trusted_contact_id (FK → trusted_contacts)
+├── notification_type (INITIAL / ESCALATION)
+├── delivery_status (SENT / FAILED)
+└── notified_at
+
+
+`alert_locations` is a single continuous trail, not one row per lifecycle event — the trigger
+location is simply the first entry. Cancelling or resolving an alert doesn't need its own
+location field, since the trail combined with the alert's own timestamps already answers "where
+was this alert at moment X."
+
+### Escalation
+
+A `@Scheduled` background task (`EscalationScheduler`) runs every 5 seconds, checking for
+`ACTIVE` alerts older than a configurable window (`alert.escalation-window-seconds`, default 45s)
+and escalating them automatically. Escalation is re-verified against the alert's *current* status
+at the moment it runs (not just the scheduler's initial query), guarding against a race condition
+where a user resolves or cancels an alert in the gap between the scheduler's query and the actual
+escalation call.
+
+### Notifications
+
+Sent via a `NotificationService` interface, with `EmailNotificationService` (Gmail SMTP) as the
+current implementation — this separation allows additional channels (e.g. SMS) to be added later
+without changing `AlertService`. Each contact is notified independently; one failed send does not
+block notifications to the others, and delivery success/failure is recorded per contact in
+`alert_notifications`.
+
+### Ownership Enforcement
+
+Same pattern as Trusted Contacts — every user-facing alert operation uses `findByIdAndUserId`.
+The one exception is the escalation scheduler itself, which acts on the system's behalf (no
+`Authentication` context exists for a background task) and uses a plain `findById`.
+
+### Known Trade-off
+
+Notification sending currently happens synchronously, inside the same `@Transactional` boundary
+as the alert's database writes. A slow SMTP response could delay the API response and hold a
+database connection open for that duration. Acceptable at this project's scale; a production
+version would move notification dispatch to an asynchronous/queued job.
+
 ## Database
 
 ### Responsibilities
@@ -79,7 +189,8 @@ DTOs are intentionally separate classes from entities, even when their fields ov
 - Preserve alert history
 - Persist user information
 - Store hashed refresh tokens and their expiration/revocation information
-
+- Store trusted contacts, alert lifecycle records, location trails, and notification
+  delivery records
 ---
 
 ## Benefits
@@ -118,14 +229,13 @@ The workflow uses path-based conditions so unrelated repository changes do not u
 ## CI Workflow Steps
 
 1. Check out the repository
-2. Set up JDK 21
+2. Set up JDK 21 (with Maven dependency caching)
 3. Prepare the required application configuration without exposing secrets
-4. Restore/cache Maven dependencies
-5. Compile the backend
-6. Run the unit test suite
-7. Build the Docker image
-
-The workflow is designed to keep CI execution efficient by avoiding unnecessary backend builds when only unrelated parts of the repository are changed.
+4. Compile the backend
+5. Run the unit test suite — covers `AuthService`, `TrustedContactService`, and `AlertService`,
+   all using mocked repositories and a mocked `NotificationService`, so no live database or real
+   email sending occurs during CI
+6. Build the Docker image
 
 ## Continuous Deployment
 
