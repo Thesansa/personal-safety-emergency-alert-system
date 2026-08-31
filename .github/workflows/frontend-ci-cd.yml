@@ -5,10 +5,12 @@ on:
     branches: [main]
     paths:
       - "frontend/**"
+      - "!frontend/README.md"
   pull_request:
     branches: [main]
     paths:
       - "frontend/**"
+      - "!frontend/README.md"
 
 jobs:
   build:
